@@ -13,10 +13,17 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as columns from "../columns.js";
 import type * as http from "../http.js";
+import type * as migrations from "../migrations.js";
 import type * as paymentAttemptTypes from "../paymentAttemptTypes.js";
 import type * as paymentAttempts from "../paymentAttempts.js";
+import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
+import type * as workspaceHelpers from "../workspaceHelpers.js";
+import type * as workspaceIndex from "../workspaceIndex.js";
+import type * as workspaceMembers from "../workspaceMembers.js";
+import type * as workspaces from "../workspaces.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -27,10 +34,17 @@ import type * as users from "../users.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  columns: typeof columns;
   http: typeof http;
+  migrations: typeof migrations;
   paymentAttemptTypes: typeof paymentAttemptTypes;
   paymentAttempts: typeof paymentAttempts;
+  tasks: typeof tasks;
   users: typeof users;
+  workspaceHelpers: typeof workspaceHelpers;
+  workspaceIndex: typeof workspaceIndex;
+  workspaceMembers: typeof workspaceMembers;
+  workspaces: typeof workspaces;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,
