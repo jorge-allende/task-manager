@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Calendar, Clock, MessageSquare, Paperclip, User, GripVertical } from "lucide-react"
+import { Calendar, Clock, MessageSquare, Paperclip, User, GripVertical, Link2, FileText } from "lucide-react"
 import { format, isAfter, isBefore, startOfDay } from "date-fns"
 import { TaskStatus } from "./kanban-board"
 import { useMemo } from "react"
@@ -21,7 +21,16 @@ interface Task {
   createdBy: string
   dueDate?: string
   tags?: string[]
+  tagDetails?: Array<{
+    name: string
+    color: string
+  }>
   attachments?: string[]
+  links?: Array<{
+    url: string
+    title: string
+    favicon?: string
+  }>
   position: number
   createdAt: string
   updatedAt: string
@@ -42,16 +51,69 @@ interface Task {
 interface KanbanCardProps {
   task: Task
   isDragging?: boolean
+  onClick?: () => void
 }
 
 const priorityConfig = {
-  low: { label: "Low", color: "bg-gray-500" },
-  medium: { label: "Medium", color: "bg-blue-500" },
-  high: { label: "High", color: "bg-orange-500" },
-  urgent: { label: "Urgent", color: "bg-red-500" },
+  low: { label: "Low", bgColor: "bg-gray-100 dark:bg-gray-800", textColor: "text-gray-700 dark:text-gray-300" },
+  medium: { label: "Medium", bgColor: "bg-blue-100 dark:bg-blue-900/30", textColor: "text-blue-700 dark:text-blue-300" },
+  high: { label: "High", bgColor: "bg-orange-100 dark:bg-orange-900/30", textColor: "text-orange-700 dark:text-orange-300" },
+  urgent: { label: "Urgent", bgColor: "bg-red-100 dark:bg-red-900/30", textColor: "text-red-700 dark:text-red-300" },
 }
 
-export function KanbanCard({ task, isDragging }: KanbanCardProps) {
+const statusConfig = {
+  todo: { label: "Not Started", color: "bg-blue-500", textColor: "text-blue-500" },
+  in_progress: { label: "In Progress", color: "bg-amber-500", textColor: "text-amber-600 dark:text-amber-500" },
+  review: { label: "In Review", color: "bg-purple-500", textColor: "text-purple-600 dark:text-purple-500" },
+  done: { label: "Completed", color: "bg-green-500", textColor: "text-green-600 dark:text-green-500" },
+}
+
+// Tag color configuration - you can customize these colors based on your design system
+export const tagColorConfig: Record<string, { bg: string; text: string }> = {
+  // Development related
+  "bug": { bg: "bg-red-100 dark:bg-red-900/30", text: "text-red-700 dark:text-red-300" },
+  "feature": { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-300" },
+  "enhancement": { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-300" },
+  "documentation": { bg: "bg-purple-100 dark:bg-purple-900/30", text: "text-purple-700 dark:text-purple-300" },
+  
+  // Status related
+  "urgent": { bg: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-700 dark:text-orange-300" },
+  "blocked": { bg: "bg-red-100 dark:bg-red-900/30", text: "text-red-700 dark:text-red-300" },
+  "waiting": { bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-300" },
+  
+  // Team related
+  "frontend": { bg: "bg-cyan-100 dark:bg-cyan-900/30", text: "text-cyan-700 dark:text-cyan-300" },
+  "backend": { bg: "bg-indigo-100 dark:bg-indigo-900/30", text: "text-indigo-700 dark:text-indigo-300" },
+  "design": { bg: "bg-pink-100 dark:bg-pink-900/30", text: "text-pink-700 dark:text-pink-300" },
+  "qa": { bg: "bg-teal-100 dark:bg-teal-900/30", text: "text-teal-700 dark:text-teal-300" },
+  
+  // Default fallback
+  "default": { bg: "bg-gray-100 dark:bg-gray-800", text: "text-gray-700 dark:text-gray-300" },
+}
+
+// Helper function to get tag color
+export const getTagColor = (tag: string, color?: string): { bg: string; text: string; style?: React.CSSProperties } => {
+  // If a specific color is provided, use it
+  if (color) {
+    // If it's a hex color, convert to Tailwind classes
+    if (color.startsWith('#')) {
+      return {
+        bg: 'bg-opacity-20',
+        text: 'text-opacity-90',
+        style: { backgroundColor: color + '20', color: color }
+      }
+    }
+    // If it's already a Tailwind class, use predefined config
+    const normalizedTag = tag.toLowerCase()
+    return tagColorConfig[normalizedTag] || tagColorConfig.default
+  }
+  
+  // Fallback to tag name-based colors
+  const normalizedTag = tag.toLowerCase()
+  return tagColorConfig[normalizedTag] || tagColorConfig.default
+}
+
+export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
   const {
     attributes,
     listeners,
@@ -82,6 +144,8 @@ export function KanbanCard({ task, isDragging }: KanbanCardProps) {
     return { isOverdue: overdue, isDueSoon: dueSoon }
   }, [task.dueDate, task.status])
 
+  const statusInfo = statusConfig[task.status] || statusConfig.todo
+  
   return (
     <div
       ref={setNodeRef}
@@ -93,132 +157,174 @@ export function KanbanCard({ task, isDragging }: KanbanCardProps) {
     >
       <Card
         className={cn(
-          "group relative cursor-grab hover:shadow-md transition-all duration-200",
-          "hover:ring-2 hover:ring-primary/20 hover:scale-[1.02]",
-          "active:scale-[0.98] active:shadow-sm", // Touch feedback
-          (isDragging || isSortableDragging) && "cursor-grabbing shadow-lg scale-105"
+          "group relative cursor-pointer hover:shadow-sm transition-all duration-200 border-muted/50",
+          (isDragging || isSortableDragging) && "cursor-grabbing shadow-lg"
         )}
         {...attributes}
         {...listeners}
+        onClick={(e) => {
+          // Only trigger click if not dragging and not clicking on the drag handle
+          if (!isDragging && !isSortableDragging && onClick) {
+            e.stopPropagation()
+            onClick()
+          }
+        }}
       >
-        {/* Drag Handle */}
-        <div
-          className={cn(
-            "absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none",
-            "text-muted-foreground/50",
-            "touch:opacity-100", // Always visible on touch devices
-            (isDragging || isSortableDragging) && "opacity-100"
-          )}
-        >
-          <GripVertical className="h-4 w-4 touch:h-5 touch:w-5" />
-        </div>
-        <CardHeader className="p-4 pb-3 pl-8 space-y-2">
-          {/* Priority indicator */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <h4 className="font-medium text-sm leading-tight line-clamp-2">
-                {task.title}
-              </h4>
-            </div>
-            <div
-              className={cn(
-                "w-2 h-2 rounded-full flex-shrink-0 mt-1.5",
-                priorityConfig[task.priority].color
-              )}
-              title={priorityConfig[task.priority].label + " priority"}
-            />
+        <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+          {/* Status indicator with dot and label */}
+          <div className="flex items-center gap-2">
+            <div className={cn("w-2 h-2 rounded-full", statusInfo.color)} />
+            <span className={cn("text-sm font-medium", statusInfo.textColor)}>
+              {statusInfo.label}
+            </span>
           </div>
 
-          {/* Tags */}
-          {task.tags && task.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {task.tags.slice(0, 3).map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="secondary"
-                  className="text-xs px-2 py-0"
-                >
-                  {tag}
-                </Badge>
-              ))}
-              {task.tags.length > 3 && (
-                <Badge variant="secondary" className="text-xs px-2 py-0">
-                  +{task.tags.length - 3}
-                </Badge>
-              )}
-            </div>
-          )}
-        </CardHeader>
+          {/* Title - larger and bolder */}
+          <h4 className="font-semibold text-sm sm:text-base leading-tight line-clamp-2">
+            {task.title}
+          </h4>
 
-        <CardContent className="p-4 pt-0 space-y-3">
           {/* Description preview */}
           {task.description && (
-            <p className="text-xs text-muted-foreground line-clamp-2">
+            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
               {task.description}
             </p>
           )}
 
-          {/* Meta information */}
-          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+          {/* Tags */}
+          {((task.tagDetails && task.tagDetails.length > 0) || (task.tags && task.tags.length > 0)) && (
+            <div className="flex flex-wrap gap-1">
+              {(task.tagDetails || task.tags || []).slice(0, 2).map((tag, index) => {
+                const tagName = typeof tag === 'string' ? tag : tag.name
+                const tagColor = typeof tag === 'string' 
+                  ? getTagColor(tag) 
+                  : getTagColor(tag.name, tag.color)
+                
+                return (
+                  <Badge
+                    key={tagName + index}
+                    className={cn(
+                      "text-xs px-2 py-0.5 font-normal border-0",
+                      !tagColor.style && tagColor.bg,
+                      !tagColor.style && tagColor.text
+                    )}
+                    style={tagColor.style}
+                  >
+                    {tagName}
+                  </Badge>
+                )
+              })}
+              {((task.tagDetails?.length || task.tags?.length || 0) > 2) && (
+                <Badge 
+                  variant="secondary" 
+                  className="text-xs px-2 py-0.5 font-normal"
+                >
+                  +{(task.tagDetails?.length || task.tags?.length || 0) - 2}
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Assignees section with label */}
+          {task.assignees && task.assignees.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">Assignees :</span>
+              <div className="flex items-center gap-1">
+                <div className="flex -space-x-2">
+                  {task.assignees.slice(0, 3).map((assignee) => (
+                    <Avatar
+                      key={assignee._id}
+                      className="h-6 w-6 border-2 border-background"
+                    >
+                      <AvatarImage
+                        src={`https://api.dicebear.com/7.x/initials/svg?seed=${assignee.name}`}
+                        alt={assignee.name}
+                      />
+                      <AvatarFallback className="text-xs">
+                        {assignee.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
+                </div>
+                {task.assignees.length > 3 && (
+                  <Badge variant="secondary" className="h-6 px-2 text-xs">
+                    +{task.assignees.length - 3}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bottom section with date and priority */}
+          <div className="flex items-center justify-between pt-1">
             {/* Due date */}
             {task.dueDate && (
               <div
                 className={cn(
-                  "flex items-center gap-1",
+                  "flex items-center gap-1.5 text-sm",
                   isOverdue && "text-destructive font-medium",
-                  isDueSoon && "text-orange-600 dark:text-orange-400"
+                  isDueSoon && "text-orange-600 dark:text-orange-400",
+                  !isOverdue && !isDueSoon && "text-muted-foreground"
                 )}
               >
-                <Calendar className="h-3 w-3" />
-                <span>{format(new Date(task.dueDate), "MMM d")}</span>
+                <Calendar className="h-3.5 w-3.5" />
+                <span>{format(new Date(task.dueDate), "dd MMM yyyy")}</span>
               </div>
             )}
 
-            {/* Comments */}
-            {task.commentCount !== undefined && task.commentCount > 0 && (
-              <div className="flex items-center gap-1">
-                <MessageSquare className="h-3 w-3" />
-                <span>{task.commentCount}</span>
-              </div>
-            )}
-
-            {/* Attachments */}
-            {task.attachments && task.attachments.length > 0 && (
-              <div className="flex items-center gap-1">
-                <Paperclip className="h-3 w-3" />
-                <span>{task.attachments.length}</span>
-              </div>
-            )}
+            {/* Priority badge */}
+            <Badge 
+              className={cn(
+                "text-xs font-medium",
+                priorityConfig[task.priority].bgColor,
+                priorityConfig[task.priority].textColor,
+                "border-0"
+              )}
+            >
+              {priorityConfig[task.priority].label}
+            </Badge>
           </div>
 
-          {/* Assignees */}
-          {task.assignees && task.assignees.length > 0 && (
-            <div className="flex items-center gap-1">
-              <div className="flex -space-x-2">
-                {task.assignees.slice(0, 3).map((assignee) => (
-                  <Avatar
-                    key={assignee._id}
-                    className="h-6 w-6 border-2 border-background"
-                  >
-                    <AvatarImage
-                      src={`https://api.dicebear.com/7.x/initials/svg?seed=${assignee.name}`}
-                      alt={assignee.name}
-                    />
-                    <AvatarFallback className="text-xs">
-                      {assignee.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .toUpperCase()
-                        .slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </div>
-              {task.assignees.length > 3 && (
-                <Badge variant="secondary" className="h-6 px-2">
-                  +{task.assignees.length - 3}
-                </Badge>
+          {/* Metadata section - comments, links, attachments */}
+          {((task.commentCount !== undefined && task.commentCount > 0) || (task.attachments && task.attachments.length > 0) || (task.links && task.links.length > 0)) && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
+              {/* Comments */}
+              {task.commentCount !== undefined && task.commentCount > 0 && (
+                <>
+                  <div className="flex items-center gap-1">
+                    <MessageSquare className="h-3 w-3" />
+                    <span>{task.commentCount} {task.commentCount === 1 ? 'Comment' : 'Comments'}</span>
+                  </div>
+                  {(task.attachments && task.attachments.length > 0) && (
+                    <span className="text-muted-foreground/50">•</span>
+                  )}
+                </>
+              )}
+
+              {/* Attachments/Files */}
+              {task.attachments && task.attachments.length > 0 && (
+                <>
+                  <div className="flex items-center gap-1">
+                    <FileText className="h-3 w-3" />
+                    <span>{task.attachments.length} {task.attachments.length === 1 ? 'File' : 'Files'}</span>
+                  </div>
+                  {(task.links && task.links.length > 0) && (
+                    <span className="text-muted-foreground/50">•</span>
+                  )}
+                </>
+              )}
+
+              {/* Links */}
+              {task.links && task.links.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <Link2 className="h-3 w-3" />
+                  <span>{task.links.length} {task.links.length === 1 ? 'Link' : 'Links'}</span>
+                </div>
               )}
             </div>
           )}

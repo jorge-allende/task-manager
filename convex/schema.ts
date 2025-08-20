@@ -66,7 +66,7 @@ export default defineSchema({
         v.literal("in_progress"),
         v.literal("review"),
         v.literal("done")
-      ),
+      ), // Keep status required in schema for backward compatibility
       columnId: v.optional(v.id("columns")), // New field for dynamic columns
       priority: v.union(
         v.literal("low"),
@@ -79,6 +79,11 @@ export default defineSchema({
       dueDate: v.optional(v.string()),
       tags: v.optional(v.array(v.string())),
       attachments: v.optional(v.array(v.string())), // URLs or file IDs
+      links: v.optional(v.array(v.object({
+        url: v.string(),
+        title: v.string(),
+        favicon: v.optional(v.string()),
+      }))),
       position: v.number(), // For ordering within a column
       createdAt: v.string(),
       updatedAt: v.string(),
@@ -133,4 +138,15 @@ export default defineSchema({
       .index("byToken", ["token"])
       .index("byStatus", ["status"])
       .index("byWorkspaceAndStatus", ["workspaceId", "status"]),
+    
+    // Workspace tags for task categorization
+    workspaceTags: defineTable({
+      workspaceId: v.id("workspaces"),
+      name: v.string(),
+      color: v.string(), // Hex color or Tailwind class (e.g., "#FF5733" or "bg-blue-500")
+      createdAt: v.string(),
+      updatedAt: v.string(),
+    })
+      .index("byWorkspace", ["workspaceId"])
+      .index("byWorkspaceAndName", ["workspaceId", "name"]),
   });

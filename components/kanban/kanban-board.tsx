@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Plus, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { TaskDetailModal } from "./task-detail-modal"
 
 interface KanbanBoardProps {
   workspaceId: Id<"workspaces">
@@ -64,20 +65,21 @@ export function KanbanBoard({ workspaceId, includeArchived = false }: KanbanBoar
   const boardData = useQuery(api.tasks.listForBoard, { workspaceId, includeArchived })
   const reorderTask = useMutation(api.tasks.reorder)
   const createColumn = useMutation(api.columns.create)
+  const initializeColumns = useMutation(api.columns.initializeDefaults)
   
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  const [selectedTask, setSelectedTask] = useState<any>(null)
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const scrollIntervalRef = useRef<number | null>(null)
   const mousePositionRef = useRef({ x: 0, y: 0 })
 
   // Configure sensors for drag and drop
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 8px movement required to start drag
-        delay: 150, // 150ms delay for touch devices (long press)
-        tolerance: 5, // 5px tolerance during delay
+        distance: 3, // Minimal distance to prevent accidental drags
       },
     }),
     useSensor(KeyboardSensor, {
@@ -88,6 +90,15 @@ export function KanbanBoard({ workspaceId, includeArchived = false }: KanbanBoar
   // Use columns and tasks from boardData
   const columns = boardData?.columns || []
   const tasksByColumn = boardData?.tasksByColumn || {}
+  
+  // Auto-initialize columns if none exist
+  useEffect(() => {
+    if (boardData && columns.length === 0) {
+      initializeColumns({ workspaceId }).catch(error => {
+        console.error('Failed to initialize columns:', error)
+      })
+    }
+  }, [boardData, columns.length, workspaceId, initializeColumns])
 
   // Find the active task for drag overlay
   const activeTask = useMemo(() => {
@@ -330,6 +341,16 @@ export function KanbanBoard({ workspaceId, includeArchived = false }: KanbanBoar
     }
   }, [createColumn, workspaceId, columns.length])
 
+  const handleTaskClick = useCallback((task: any) => {
+    setSelectedTask(task)
+    setIsDetailSheetOpen(true)
+  }, [])
+
+  const handleEditTask = useCallback(() => {
+    // The edit modal will be opened from within the detail sheet
+    // This is just to satisfy the interface
+  }, [])
+
   if (!boardData) {
     return (
       <div className="flex gap-6 p-6 overflow-x-auto">
@@ -405,6 +426,7 @@ export function KanbanBoard({ workspaceId, includeArchived = false }: KanbanBoar
             taskIds={taskIds[column._id] || []}
             isOver={overId === column._id}
             workspaceId={workspaceId}
+            onTaskClick={handleTaskClick}
           />
         ))}
       </div>
@@ -421,6 +443,16 @@ export function KanbanBoard({ workspaceId, includeArchived = false }: KanbanBoar
           </div>
         ) : null}
       </DragOverlay>
+      
+      <TaskDetailModal
+        task={selectedTask}
+        isOpen={isDetailSheetOpen}
+        onClose={() => {
+          setIsDetailSheetOpen(false)
+          setSelectedTask(null)
+        }}
+        onEdit={handleEditTask}
+      />
     </DndContext>
   )
 }

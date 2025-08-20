@@ -1,6 +1,7 @@
 import { v } from "convex/values"
 import { mutation, query } from "./_generated/server"
 import { Doc, Id } from "./_generated/dataModel"
+import { getCurrentUserOrThrow } from "./users"
 
 // Default columns for new workspaces
 const DEFAULT_COLUMNS = [
@@ -14,18 +15,7 @@ export const list = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
     // Verify user has access to workspace
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) {
-      throw new Error("Not authenticated")
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
-      .first()
-    if (!user) {
-      throw new Error("User not found")
-    }
+    const user = await getCurrentUserOrThrow(ctx)
 
     const member = await ctx.db
       .query("workspaceMembers")
@@ -60,18 +50,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     // Verify user has admin/owner access
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) {
-      throw new Error("Not authenticated")
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
-      .first()
-    if (!user) {
-      throw new Error("User not found")
-    }
+    const user = await getCurrentUserOrThrow(ctx)
 
     const member = await ctx.db
       .query("workspaceMembers")
@@ -127,18 +106,7 @@ export const update = mutation({
     }
 
     // Verify user has admin/owner access
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) {
-      throw new Error("Not authenticated")
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
-      .first()
-    if (!user) {
-      throw new Error("User not found")
-    }
+    const user = await getCurrentUserOrThrow(ctx)
 
     const member = await ctx.db
       .query("workspaceMembers")
@@ -181,18 +149,7 @@ export const remove = mutation({
     }
 
     // Verify user has admin/owner access
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) {
-      throw new Error("Not authenticated")
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
-      .first()
-    if (!user) {
-      throw new Error("User not found")
-    }
+    const user = await getCurrentUserOrThrow(ctx)
 
     const member = await ctx.db
       .query("workspaceMembers")
@@ -278,18 +235,7 @@ export const reorder = mutation({
     }
 
     // Verify user has admin/owner access
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) {
-      throw new Error("Not authenticated")
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
-      .first()
-    if (!user) {
-      throw new Error("User not found")
-    }
+    const user = await getCurrentUserOrThrow(ctx)
 
     const member = await ctx.db
       .query("workspaceMembers")
@@ -375,19 +321,8 @@ export const initializeDefaults = mutation({
 export const listWithCounts = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
-    // Verify user has access to workspace (duplicate logic from list query)
-    const identity = await ctx.auth.getUserIdentity()
-    if (!identity) {
-      throw new Error("Not authenticated")
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
-      .first()
-    if (!user) {
-      throw new Error("User not found")
-    }
+    // Verify user has access to workspace
+    const user = await getCurrentUserOrThrow(ctx)
 
     const member = await ctx.db
       .query("workspaceMembers")

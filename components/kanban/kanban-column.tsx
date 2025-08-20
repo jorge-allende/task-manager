@@ -58,9 +58,10 @@ interface KanbanColumnProps {
   taskIds: string[]
   isOver?: boolean
   workspaceId: Id<"workspaces">
+  onTaskClick?: (task: Task) => void
 }
 
-export function KanbanColumn({ column, tasks, taskIds, isOver, workspaceId }: KanbanColumnProps) {
+export function KanbanColumn({ column, tasks, taskIds, isOver, workspaceId, onTaskClick }: KanbanColumnProps) {
   const { setNodeRef, isOver: isOverColumn } = useDroppable({
     id: column._id,
   })
@@ -102,7 +103,7 @@ export function KanbanColumn({ column, tasks, taskIds, isOver, workspaceId }: Ka
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-shrink-0 w-80 bg-muted/50 rounded-lg transition-all duration-200",
+        "flex-shrink-0 w-[400px] bg-muted/50 rounded-lg transition-all duration-200",
         "border-2 border-transparent",
         showIsOver && "ring-2 ring-primary ring-offset-2 bg-muted/70 border-primary/50 shadow-lg scale-[1.02]"
       )}
@@ -197,7 +198,11 @@ export function KanbanColumn({ column, tasks, taskIds, isOver, workspaceId }: Ka
                 </div>
               ) : (
                 sortedTasks.map((task) => (
-                  <KanbanCard key={task._id} task={task} />
+                  <KanbanCard 
+                    key={task._id} 
+                    task={task} 
+                    onClick={() => onTaskClick?.(task)}
+                  />
                 ))
               )}
               
@@ -217,7 +222,6 @@ export function KanbanColumn({ column, tasks, taskIds, isOver, workspaceId }: Ka
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         workspaceId={workspaceId}
-        defaultColumnId={column._id as Id<"columns">}
       />
     </div>
   )

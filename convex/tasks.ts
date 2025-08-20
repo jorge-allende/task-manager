@@ -50,12 +50,12 @@ export const create = mutation({
     workspaceId: v.id("workspaces"),
     title: v.string(),
     description: v.optional(v.string()),
-    status: v.union(
+    status: v.optional(v.union(
       v.literal("todo"),
       v.literal("in_progress"),
       v.literal("review"),
       v.literal("done")
-    ),
+    )),
     columnId: v.optional(v.id("columns")), // Support both status and columnId during migration
     priority: v.union(
       v.literal("low"),
@@ -67,6 +67,11 @@ export const create = mutation({
     dueDate: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     attachments: v.optional(v.array(v.string())),
+    links: v.optional(v.array(v.object({
+      url: v.string(),
+      title: v.string(),
+      favicon: v.optional(v.string()),
+    }))),
   },
   handler: async (ctx, args) => {
     const { user } = await ensureWorkspaceAccess(
@@ -75,28 +80,100 @@ export const create = mutation({
       "tasks.create"
     );
 
-    // If columnId is provided, use it; otherwise map status to column
-    let columnId = args.columnId;
-    if (!columnId && args.status) {
-      // Try to find column by matching status name
-      const columns = await ctx.db
-        .query("columns")
+    // Validate tags against workspace tags
+    if (args.tags && args.tags.length > 0) {
+      const workspaceTags = await ctx.db
+        .query("workspaceTags")
         .withIndex("byWorkspace", (q) => q.eq("workspaceId", args.workspaceId))
         .collect();
       
-      // Map old status to column names
-      const statusToColumnName: Record<string, string> = {
-        todo: "To Do",
-        in_progress: "In Progress",
-        review: "Review",
-        done: "Done",
-      };
+      const validTagNames = new Set(workspaceTags.map(t => t.name));
+      const invalidTags = args.tags.filter(tag => !validTagNames.has(tag));
       
-      const targetColumnName = statusToColumnName[args.status];
-      const column = columns.find(c => c.name === targetColumnName);
-      
+      if (invalidTags.length > 0) {
+        throw new Error(`Invalid tags: ${invalidTags.join(", ")}. Please create these tags first.`);
+      }
+    }
+
+    // Validate attachment limit
+    if (args.attachments && args.attachments.length > 10) {
+      throw new Error("Maximum 10 attachments allowed per task");
+    }
+
+    // Validate links
+    if (args.links && args.links.length > 0) {
+      // Basic URL validation
+      for (const link of args.links) {
+        try {
+          new URL(link.url);
+        } catch (error) {
+          throw new Error(`Invalid URL: ${link.url}`);
+        }
+      }
+    }
+
+    // Determine column and status
+    let columnId = args.columnId;
+    let finalStatus = args.status;
+    
+    // Get all columns for the workspace
+    const columns = await ctx.db
+      .query("columns")
+      .withIndex("byWorkspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    
+    // Sort columns by position to find the first one
+    columns.sort((a, b) => a.position - b.position);
+    
+    if (!columnId) {
+      if (args.status) {
+        // Map status to column if status is provided
+        const statusToColumnName: Record<string, string> = {
+          todo: "To Do",
+          in_progress: "In Progress",
+          review: "Review",
+          done: "Done",
+        };
+        
+        const targetColumnName = statusToColumnName[args.status];
+        const column = columns.find(c => c.name === targetColumnName);
+        
+        if (column) {
+          columnId = column._id;
+        }
+      } else {
+        // No status or columnId provided - use the first column as default
+        if (columns.length > 0) {
+          columnId = columns[0]._id;
+          
+          // Set status based on the column name for backward compatibility
+          const columnNameToStatus: Record<string, typeof finalStatus> = {
+            "To Do": "todo",
+            "In Progress": "in_progress",
+            "Review": "review",
+            "Done": "done",
+          };
+          
+          finalStatus = columnNameToStatus[columns[0].name] || "todo";
+        } else {
+          // No columns exist - fallback to "todo" status
+          finalStatus = "todo";
+        }
+      }
+    } else if (!finalStatus) {
+      // Column is provided but not status - derive status from column
+      const column = columns.find(c => c._id === columnId);
       if (column) {
-        columnId = column._id;
+        const columnNameToStatus: Record<string, "todo" | "in_progress" | "review" | "done"> = {
+          "To Do": "todo",
+          "In Progress": "in_progress",
+          "Review": "review",
+          "Done": "done",
+        };
+        
+        finalStatus = columnNameToStatus[column.name] || "todo";
+      } else {
+        finalStatus = "todo";
       }
     }
 
@@ -116,12 +193,12 @@ export const create = mutation({
       if (tasksInColumn.length > 0) {
         maxPosition = Math.max(...tasksInColumn.map(t => t.position));
       }
-    } else {
+    } else if (finalStatus) {
       // Query by status (fallback)
       const tasksInStatus = await ctx.db
         .query("tasks")
         .withIndex("byWorkspaceAndStatus", (q) =>
-          q.eq("workspaceId", args.workspaceId).eq("status", args.status)
+          q.eq("workspaceId", args.workspaceId).eq("status", finalStatus)
         )
         .filter((q) => q.eq(q.field("isArchived"), false))
         .collect();
@@ -133,6 +210,7 @@ export const create = mutation({
 
     const taskId = await ctx.db.insert("tasks", {
       ...args,
+      status: finalStatus!, // Use the determined status
       columnId,
       createdBy: user._id,
       position: maxPosition + 1,
@@ -242,7 +320,15 @@ export const list = query({
     const paginatedResults = filteredResults.slice(start, start + pageSize);
     const hasMore = filteredResults.length > start + pageSize;
     
-    // Enrich with user data
+    // Get workspace tags for enrichment
+    const workspaceTags = await ctx.db
+      .query("workspaceTags")
+      .withIndex("byWorkspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    
+    const tagMap = new Map(workspaceTags.map(tag => [tag.name, tag]));
+
+    // Enrich with user data and tag details
     const enrichedTasks = await Promise.all(
       paginatedResults.map(async (task) => {
         const [creator, assignees, commentCount] = await Promise.all([
@@ -259,11 +345,20 @@ export const list = query({
             .then(comments => comments.length),
         ]);
 
+        // Enrich tags with color information
+        const enrichedTags = task.tags 
+          ? task.tags.map(tagName => ({
+              name: tagName,
+              color: tagMap.get(tagName)?.color || "#6B7280", // Default gray if tag not found
+            }))
+          : undefined;
+
         return {
           ...task,
           creator,
           assignees: assignees.filter(Boolean),
           commentCount,
+          tagDetails: enrichedTags,
         };
       })
     );
@@ -340,7 +435,15 @@ export const listForBoard = query({
       tasksByColumn[columnId].sort((a, b) => a.position - b.position);
     });
 
-    // Enrich tasks with user data
+    // Get workspace tags for enrichment
+    const workspaceTags = await ctx.db
+      .query("workspaceTags")
+      .withIndex("byWorkspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    
+    const tagMap = new Map(workspaceTags.map(tag => [tag.name, tag]));
+
+    // Enrich tasks with user data and tag details
     const enrichedTasksByColumn: Record<string, any[]> = {};
 
     await Promise.all(
@@ -361,11 +464,20 @@ export const listForBoard = query({
                 .then(comments => comments.length),
             ]);
 
+            // Enrich tags with color information
+            const enrichedTags = task.tags 
+              ? task.tags.map(tagName => ({
+                  name: tagName,
+                  color: tagMap.get(tagName)?.color || "#6B7280", // Default gray if tag not found
+                }))
+              : undefined;
+
             return {
               ...task,
               creator,
               assignees: assignees.filter(Boolean),
               commentCount,
+              tagDetails: enrichedTags,
             };
           })
         );
@@ -460,7 +572,7 @@ export const get = query({
 
     await ensureWorkspaceAccess(ctx, task.workspaceId, "tasks.view");
 
-    const [creator, assignees, comments] = await Promise.all([
+    const [creator, assignees, comments, workspaceTags] = await Promise.all([
       ctx.db.get(task.createdBy),
       task.assignedTo 
         ? Promise.all(task.assignedTo.map(id => ctx.db.get(id)))
@@ -471,7 +583,21 @@ export const get = query({
           q.eq("taskId", task._id).eq("isDeleted", false)
         )
         .collect(),
+      ctx.db
+        .query("workspaceTags")
+        .withIndex("byWorkspace", (q) => q.eq("workspaceId", task.workspaceId))
+        .collect(),
     ]);
+
+    const tagMap = new Map(workspaceTags.map(tag => [tag.name, tag]));
+
+    // Enrich tags with color information
+    const enrichedTags = task.tags 
+      ? task.tags.map(tagName => ({
+          name: tagName,
+          color: tagMap.get(tagName)?.color || "#6B7280", // Default gray if tag not found
+        }))
+      : undefined;
 
     // Enrich comments with user data
     const enrichedComments = await Promise.all(
@@ -489,6 +615,7 @@ export const get = query({
       creator,
       assignees: assignees.filter(Boolean),
       comments: enrichedComments,
+      tagDetails: enrichedTags,
     };
   },
 });
@@ -516,6 +643,11 @@ export const update = mutation({
     dueDate: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     attachments: v.optional(v.array(v.string())),
+    links: v.optional(v.array(v.object({
+      url: v.string(),
+      title: v.string(),
+      favicon: v.optional(v.string()),
+    }))),
   },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
@@ -524,6 +656,38 @@ export const update = mutation({
     }
 
     await ensureWorkspaceAccess(ctx, task.workspaceId, "tasks.update");
+
+    // Validate tags against workspace tags
+    if (args.tags !== undefined && args.tags.length > 0) {
+      const workspaceTags = await ctx.db
+        .query("workspaceTags")
+        .withIndex("byWorkspace", (q) => q.eq("workspaceId", task.workspaceId))
+        .collect();
+      
+      const validTagNames = new Set(workspaceTags.map(t => t.name));
+      const invalidTags = args.tags.filter(tag => !validTagNames.has(tag));
+      
+      if (invalidTags.length > 0) {
+        throw new Error(`Invalid tags: ${invalidTags.join(", ")}. Please create these tags first.`);
+      }
+    }
+
+    // Validate attachment limit
+    if (args.attachments !== undefined && args.attachments.length > 10) {
+      throw new Error("Maximum 10 attachments allowed per task");
+    }
+
+    // Validate links
+    if (args.links !== undefined && args.links.length > 0) {
+      // Basic URL validation
+      for (const link of args.links) {
+        try {
+          new URL(link.url);
+        } catch (error) {
+          throw new Error(`Invalid URL: ${link.url}`);
+        }
+      }
+    }
 
     const updates: Partial<Doc<"tasks">> = {
       updatedAt: new Date().toISOString(),
@@ -537,6 +701,7 @@ export const update = mutation({
     if (args.dueDate !== undefined) updates.dueDate = args.dueDate;
     if (args.tags !== undefined) updates.tags = args.tags;
     if (args.attachments !== undefined) updates.attachments = args.attachments;
+    if (args.links !== undefined) updates.links = args.links;
 
     // Handle status and columnId updates
     if (args.columnId !== undefined) {
@@ -656,6 +821,18 @@ export const permanentDelete = mutation({
 
     for (const comment of comments) {
       await ctx.db.delete(comment._id);
+    }
+
+    // Delete associated attachments from storage
+    if (task.attachments && task.attachments.length > 0) {
+      for (const storageId of task.attachments) {
+        try {
+          await ctx.storage.delete(storageId);
+        } catch (error) {
+          // Storage might already be deleted, continue
+          console.warn(`Failed to delete attachment ${storageId}:`, error);
+        }
+      }
     }
 
     // Delete the task
@@ -810,6 +987,21 @@ export const bulkUpdate = mutation({
 
     await ensureWorkspaceAccess(ctx, workspaceId, "tasks.update");
 
+    // Validate tags against workspace tags
+    if (args.updates.tags !== undefined && args.updates.tags.length > 0) {
+      const workspaceTags = await ctx.db
+        .query("workspaceTags")
+        .withIndex("byWorkspace", (q) => q.eq("workspaceId", workspaceId))
+        .collect();
+      
+      const validTagNames = new Set(workspaceTags.map(t => t.name));
+      const invalidTags = args.updates.tags.filter(tag => !validTagNames.has(tag));
+      
+      if (invalidTags.length > 0) {
+        throw new Error(`Invalid tags: ${invalidTags.join(", ")}. Please create these tags first.`);
+      }
+    }
+
     // Handle column/status updates
     let finalUpdates = { ...args.updates };
     
@@ -874,7 +1066,7 @@ export const bulkUpdate = mutation({
   },
 });
 
-// Get all unique tags for a workspace
+// Get all unique tags for a workspace (legacy - returns just names)
 export const getTags = query({
   args: { workspaceId: v.id("workspaces") },
   handler: async (ctx, args) => {
@@ -892,6 +1084,42 @@ export const getTags = query({
     });
 
     return Array.from(tagSet).sort();
+  },
+});
+
+// Get all workspace tags with details (recommended)
+export const getWorkspaceTags = query({
+  args: { workspaceId: v.id("workspaces") },
+  handler: async (ctx, args) => {
+    await ensureWorkspaceAccess(ctx, args.workspaceId, "tags.view");
+
+    const tags = await ctx.db
+      .query("workspaceTags")
+      .withIndex("byWorkspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+
+    // Get task count for each tag
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("byWorkspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .filter((q) => q.eq(q.field("isArchived"), false))
+      .collect();
+
+    const tagUsageCount = new Map<string, number>();
+    tasks.forEach(task => {
+      task.tags?.forEach(tagName => {
+        tagUsageCount.set(tagName, (tagUsageCount.get(tagName) || 0) + 1);
+      });
+    });
+
+    // Enrich tags with usage count
+    const enrichedTags = tags.map(tag => ({
+      ...tag,
+      taskCount: tagUsageCount.get(tag.name) || 0,
+    }));
+
+    // Sort by name
+    return enrichedTags.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -931,6 +1159,62 @@ export const updatePosition = mutation({
 
     await ctx.db.patch(args.taskId, {
       position: newPosition,
+      updatedAt: new Date().toISOString(),
+    });
+  },
+});
+
+// Update task attachments
+export const updateAttachments = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    attachments: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Task not found");
+    }
+
+    await ensureWorkspaceAccess(ctx, task.workspaceId, "tasks.update");
+
+    // Validate attachment limit
+    if (args.attachments.length > 10) {
+      throw new Error("Maximum 10 attachments allowed per task");
+    }
+
+    await ctx.db.patch(args.taskId, {
+      attachments: args.attachments,
+      updatedAt: new Date().toISOString(),
+    });
+  },
+});
+
+// Update task links
+export const updateLinks = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    links: v.array(v.object({
+      url: v.string(),
+      title: v.string(),
+      favicon: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Task not found");
+    }
+
+    await ensureWorkspaceAccess(ctx, task.workspaceId, "tasks.update");
+
+    // Validate link limit
+    if (args.links.length > 10) {
+      throw new Error("Maximum 10 links allowed per task");
+    }
+
+    await ctx.db.patch(args.taskId, {
+      links: args.links,
       updatedAt: new Date().toISOString(),
     });
   },

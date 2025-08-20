@@ -9,7 +9,6 @@ import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { CalendarIcon, Loader2, Plus, X } from "lucide-react"
 import { format } from "date-fns"
-import { TaskStatus } from "./kanban-board"
 
 import {
   Dialog,
@@ -49,16 +48,34 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { getTagColor } from "@/components/kanban/kanban-card"
+import { TagCombobox } from "@/components/ui/tag-combobox"
+import { LinkInput, TaskLink } from "@/components/links/link-input"
+import { Link, Paperclip } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 // Form validation schema
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required").max(100, "Title is too long"),
   description: z.string().max(500, "Description is too long").optional(),
-  status: z.enum(["todo", "in_progress", "review", "done"]),
   priority: z.enum(["low", "medium", "high", "urgent"]),
   assignedTo: z.array(z.string()).optional(),
   dueDate: z.date().optional(),
   tags: z.array(z.string()).optional(),
+  links: z.array(z.object({
+    url: z.string(),
+    title: z.string(),
+    favicon: z.string().optional(),
+  })).optional(),
 })
 
 type TaskFormValues = z.infer<typeof taskFormSchema>
@@ -67,17 +84,16 @@ interface TaskCreateModalProps {
   isOpen: boolean
   onClose: () => void
   workspaceId: Id<"workspaces">
-  defaultStatus?: TaskStatus
 }
 
 export function TaskCreateModal({ 
   isOpen, 
   onClose, 
-  workspaceId, 
-  defaultStatus = "todo" 
+  workspaceId
 }: TaskCreateModalProps) {
   const { toast } = useToast()
   const createTask = useMutation(api.tasks.create)
+  const createTag = useMutation(api.tags.createTag)
   
   // Fetch workspace members for assignee selection
   const members = useQuery(api.workspaceMembers.list, {
@@ -85,18 +101,45 @@ export function TaskCreateModal({
     paginationOpts: { numItems: 100, cursor: null },
   })
 
-  const [tagInput, setTagInput] = React.useState("")
+  // Fetch workspace tags
+  const workspaceTags = useQuery(api.tags.getTags, {
+    workspaceId,
+  })
+
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [colorPickerOpen, setColorPickerOpen] = React.useState(false)
+  const [newTagName, setNewTagName] = React.useState("")
+  const [selectedColor, setSelectedColor] = React.useState("#3b82f6")
+
+  // Predefined color palette
+  const colorPalette = [
+    { name: "Red", value: "#ef4444" },
+    { name: "Orange", value: "#f97316" },
+    { name: "Amber", value: "#f59e0b" },
+    { name: "Yellow", value: "#eab308" },
+    { name: "Lime", value: "#84cc16" },
+    { name: "Green", value: "#22c55e" },
+    { name: "Emerald", value: "#10b981" },
+    { name: "Teal", value: "#14b8a6" },
+    { name: "Cyan", value: "#06b6d4" },
+    { name: "Sky", value: "#0ea5e9" },
+    { name: "Blue", value: "#3b82f6" },
+    { name: "Indigo", value: "#6366f1" },
+    { name: "Violet", value: "#8b5cf6" },
+    { name: "Purple", value: "#a855f7" },
+    { name: "Fuchsia", value: "#d946ef" },
+    { name: "Pink", value: "#ec4899" },
+  ]
 
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskFormSchema),
     defaultValues: {
       title: "",
       description: "",
-      status: defaultStatus,
       priority: "medium",
       assignedTo: [],
       tags: [],
+      links: [],
     },
   })
 
@@ -106,14 +149,13 @@ export function TaskCreateModal({
       form.reset({
         title: "",
         description: "",
-        status: defaultStatus,
         priority: "medium",
         assignedTo: [],
         tags: [],
+        links: [],
       })
-      setTagInput("")
     }
-  }, [isOpen, defaultStatus, form])
+  }, [isOpen, form])
 
   const onSubmit = async (values: TaskFormValues) => {
     try {
@@ -123,11 +165,11 @@ export function TaskCreateModal({
         workspaceId,
         title: values.title,
         description: values.description,
-        status: values.status,
         priority: values.priority,
         assignedTo: values.assignedTo?.map(id => id as Id<"users">),
         dueDate: values.dueDate?.toISOString(),
         tags: values.tags,
+        links: values.links,
       })
 
       toast({
@@ -148,23 +190,43 @@ export function TaskCreateModal({
     }
   }
 
-  const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && tagInput.trim()) {
-      e.preventDefault()
+  const handleCreateTag = async (name: string) => {
+    setNewTagName(name)
+    setColorPickerOpen(true)
+  }
+
+  const handleConfirmCreateTag = async () => {
+    try {
+      await createTag({
+        workspaceId,
+        name: newTagName,
+        color: selectedColor,
+      })
+      
+      toast({
+        title: "Tag created",
+        description: `Tag "${newTagName}" has been created.`,
+      })
+      
+      // Add the new tag to the current selection
       const currentTags = form.getValues("tags") || []
-      if (!currentTags.includes(tagInput.trim())) {
-        form.setValue("tags", [...currentTags, tagInput.trim()])
-      }
-      setTagInput("")
+      form.setValue("tags", [...currentTags, newTagName])
+      
+      setColorPickerOpen(false)
+      setNewTagName("")
+      setSelectedColor("#3b82f6")
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create tag",
+        variant: "destructive",
+      })
     }
   }
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    const currentTags = form.getValues("tags") || []
-    form.setValue("tags", currentTags.filter(tag => tag !== tagToRemove))
-  }
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -220,27 +282,23 @@ export function TaskCreateModal({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="status"
+                name="tags"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
-                      defaultValue={field.value}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="todo">To Do</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="review">Review</SelectItem>
-                        <SelectItem value="done">Done</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Tags</FormLabel>
+                    <FormControl>
+                      <TagCombobox
+                        value={field.value || []}
+                        onChange={field.onChange}
+                        tags={workspaceTags || []}
+                        disabled={isSubmitting}
+                        placeholder="Select or search tags..."
+                        onCreateTag={handleCreateTag}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Select tags to categorize your task
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -398,49 +456,37 @@ export function TaskCreateModal({
 
             <FormField
               control={form.control}
-              name="tags"
+              name="links"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Tags</FormLabel>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Link className="h-4 w-4 text-muted-foreground" />
+                    <FormLabel>Links</FormLabel>
+                  </div>
                   <FormControl>
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="Type a tag and press Enter"
-                        value={tagInput}
-                        onChange={(e) => setTagInput(e.target.value)}
-                        onKeyDown={handleAddTag}
-                        disabled={isSubmitting}
-                      />
-                      {field.value && field.value.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {field.value.map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant="secondary"
-                              className="gap-1"
-                            >
-                              {tag}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTag(tag)}
-                                className="ml-1 hover:text-destructive"
-                                disabled={isSubmitting}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <LinkInput
+                      value={field.value || []}
+                      onChange={field.onChange}
+                      maxLinks={10}
+                      placeholder="Add a link (press Enter to add)"
+                    />
                   </FormControl>
                   <FormDescription>
-                    Add tags to categorize your task
+                    Add relevant links or resources
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            <div className="rounded-lg border border-dashed p-4">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Paperclip className="h-4 w-4" />
+                <p className="text-sm">
+                  Attachments can be added after creating the task
+                </p>
+              </div>
+            </div>
 
             <DialogFooter>
               <Button
@@ -469,5 +515,59 @@ export function TaskCreateModal({
         </Form>
       </DialogContent>
     </Dialog>
+
+    {/* Color Picker Dialog */}
+    <AlertDialog open={colorPickerOpen} onOpenChange={setColorPickerOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Choose a color for "{newTagName}"</AlertDialogTitle>
+          <AlertDialogDescription>
+            Select a color to help visually identify this tag.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        
+        <div className="grid grid-cols-4 gap-3 py-4">
+          {colorPalette.map((color) => (
+            <button
+              key={color.value}
+              type="button"
+              onClick={() => setSelectedColor(color.value)}
+              className={cn(
+                "h-10 w-full rounded-md border-2 transition-all hover:scale-105",
+                selectedColor === color.value
+                  ? "border-foreground shadow-md"
+                  : "border-transparent"
+              )}
+              style={{ backgroundColor: color.value }}
+              aria-label={`Select ${color.name} color`}
+            />
+          ))}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <div
+            className="h-8 w-8 rounded-md border"
+            style={{ backgroundColor: selectedColor }}
+          />
+          <span className="text-sm text-muted-foreground">
+            Selected color: {colorPalette.find(c => c.value === selectedColor)?.name}
+          </span>
+        </div>
+        
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => {
+            setColorPickerOpen(false)
+            setNewTagName("")
+            setSelectedColor("#3b82f6")
+          }}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmCreateTag}>
+            Create Tag
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
