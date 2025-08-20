@@ -1,0 +1,9 @@
+{
+  "*.{js,jsx,ts,tsx}": [
+    "next lint --fix",
+    "bash -c 'tsc --noEmit'"
+  ],
+  "*.{json,md,mdx,css}": [
+    "prettier --write"
+  ]
+}
