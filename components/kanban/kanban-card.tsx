@@ -157,7 +157,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
     >
       <Card
         className={cn(
-          "group relative cursor-pointer hover:shadow-sm transition-all duration-200 border-muted/50",
+          "group relative cursor-pointer hover:shadow-sm transition-all duration-200 border-muted/50 min-h-[240px] bg-background py-0 gap-0",
           (isDragging || isSortableDragging) && "cursor-grabbing shadow-lg"
         )}
         {...attributes}
@@ -170,77 +170,74 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
           }
         }}
       >
-        <CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
-          {/* Status indicator with dot and label */}
-          <div className="flex items-center gap-2">
-            <div className={cn("w-2 h-2 rounded-full", statusInfo.color)} />
-            <span className={cn("text-sm font-medium", statusInfo.textColor)}>
-              {statusInfo.label}
-            </span>
+        <CardContent className="p-4 h-full flex flex-col overflow-hidden">
+          {/* Tags - top section */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {((task.tagDetails && task.tagDetails.length > 0) || (task.tags && task.tags.length > 0)) ? (
+              <>
+                {(task.tagDetails || task.tags || []).slice(0, 2).map((tag, index) => {
+                  const tagName = typeof tag === 'string' ? tag : tag.name
+                  const tagColor = typeof tag === 'string' 
+                    ? getTagColor(tag) 
+                    : getTagColor(tag.name, tag.color)
+                  
+                  return (
+                    <Badge
+                      key={tagName + index}
+                      className={cn(
+                        "text-sm px-2.5 py-1.5 font-normal border-0",
+                        !tagColor.style && tagColor.bg,
+                        !tagColor.style && tagColor.text
+                      )}
+                      style={tagColor.style}
+                    >
+                      {tagName}
+                    </Badge>
+                  )
+                })}
+                {((task.tagDetails?.length || task.tags?.length || 0) > 2) && (
+                  <Badge 
+                    variant="secondary" 
+                    className="text-sm px-2.5 py-1.5 font-normal"
+                  >
+                    +{(task.tagDetails?.length || task.tags?.length || 0) - 2}
+                  </Badge>
+                )}
+              </>
+            ) : null}
           </div>
 
-          {/* Title - larger and bolder */}
-          <h4 className="font-semibold text-sm sm:text-base leading-tight line-clamp-2">
+          {/* Title */}
+          <h4 className="font-semibold text-lg leading-tight line-clamp-2 mb-2">
             {task.title}
           </h4>
 
           {/* Description preview */}
           {task.description && (
-            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
+            <p className="text-base text-muted-foreground line-clamp-3 mb-3">
               {task.description}
             </p>
           )}
 
-          {/* Tags */}
-          {((task.tagDetails && task.tagDetails.length > 0) || (task.tags && task.tags.length > 0)) && (
-            <div className="flex flex-wrap gap-1">
-              {(task.tagDetails || task.tags || []).slice(0, 2).map((tag, index) => {
-                const tagName = typeof tag === 'string' ? tag : tag.name
-                const tagColor = typeof tag === 'string' 
-                  ? getTagColor(tag) 
-                  : getTagColor(tag.name, tag.color)
-                
-                return (
-                  <Badge
-                    key={tagName + index}
-                    className={cn(
-                      "text-xs px-2 py-0.5 font-normal border-0",
-                      !tagColor.style && tagColor.bg,
-                      !tagColor.style && tagColor.text
-                    )}
-                    style={tagColor.style}
-                  >
-                    {tagName}
-                  </Badge>
-                )
-              })}
-              {((task.tagDetails?.length || task.tags?.length || 0) > 2) && (
-                <Badge 
-                  variant="secondary" 
-                  className="text-xs px-2 py-0.5 font-normal"
-                >
-                  +{(task.tagDetails?.length || task.tags?.length || 0) - 2}
-                </Badge>
-              )}
-            </div>
-          )}
+          {/* Spacer to push bottom content down */}
+          <div className="flex-1" />
 
-          {/* Assignees section with label */}
+          {/* Assignees section - full width row */}
           {task.assignees && task.assignees.length > 0 && (
-            <div className="space-y-1">
-              <span className="text-xs text-muted-foreground">Assignees :</span>
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between mb-3 py-2">
+              <span className="text-sm font-medium text-muted-foreground">Assignees:</span>
+              <div className="flex items-center gap-2">
                 <div className="flex -space-x-2">
                   {task.assignees.slice(0, 3).map((assignee) => (
                     <Avatar
                       key={assignee._id}
-                      className="h-6 w-6 border-2 border-background"
+                      className="h-8 w-8 border-2 border-background"
                     >
                       <AvatarImage
                         src={`https://api.dicebear.com/7.x/initials/svg?seed=${assignee.name}`}
                         alt={assignee.name}
                       />
-                      <AvatarFallback className="text-xs">
+                      <AvatarFallback className="text-sm font-medium">
                         {assignee.name
                           .split(" ")
                           .map((n) => n[0])
@@ -252,7 +249,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
                   ))}
                 </div>
                 {task.assignees.length > 3 && (
-                  <Badge variant="secondary" className="h-6 px-2 text-xs">
+                  <Badge variant="secondary" className="h-7 px-2 text-sm font-medium">
                     +{task.assignees.length - 3}
                   </Badge>
                 )}
@@ -260,27 +257,29 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
             </div>
           )}
 
-          {/* Bottom section with date and priority */}
-          <div className="flex items-center justify-between pt-1">
+          {/* Date and priority row */}
+          <div className="flex items-center justify-between mb-3">
             {/* Due date */}
-            {task.dueDate && (
+            {task.dueDate ? (
               <div
                 className={cn(
                   "flex items-center gap-1.5 text-sm",
-                  isOverdue && "text-destructive font-medium",
+                  isOverdue && "text-destructive font-semibold",
                   isDueSoon && "text-orange-600 dark:text-orange-400",
                   !isOverdue && !isDueSoon && "text-muted-foreground"
                 )}
               >
-                <Calendar className="h-3.5 w-3.5" />
+                <Calendar className="h-4 w-4" />
                 <span>{format(new Date(task.dueDate), "dd MMM yyyy")}</span>
               </div>
+            ) : (
+              <div />
             )}
 
             {/* Priority badge */}
             <Badge 
               className={cn(
-                "text-xs font-medium",
+                "text-sm font-medium px-3 py-1 rounded-full",
                 priorityConfig[task.priority].bgColor,
                 priorityConfig[task.priority].textColor,
                 "border-0"
@@ -290,17 +289,20 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
             </Badge>
           </div>
 
-          {/* Metadata section - comments, links, attachments */}
-          {((task.commentCount !== undefined && task.commentCount > 0) || (task.attachments && task.attachments.length > 0) || (task.links && task.links.length > 0)) && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
+          {/* Metadata section - always at bottom */}
+          {((task.commentCount !== undefined && task.commentCount > 0) || 
+            (task.attachments && task.attachments.length > 0) || 
+            (task.links && task.links.length > 0)) && (
+            <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground pt-4 border-t">
               {/* Comments */}
               {task.commentCount !== undefined && task.commentCount > 0 && (
                 <>
                   <div className="flex items-center gap-1">
-                    <MessageSquare className="h-3 w-3" />
+                    <MessageSquare className="h-4 w-4" />
                     <span>{task.commentCount} {task.commentCount === 1 ? 'Comment' : 'Comments'}</span>
                   </div>
-                  {(task.attachments && task.attachments.length > 0) && (
+                  {((task.attachments && task.attachments.length > 0) || 
+                    (task.links && task.links.length > 0)) && (
                     <span className="text-muted-foreground/50">•</span>
                   )}
                 </>
@@ -310,7 +312,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
               {task.attachments && task.attachments.length > 0 && (
                 <>
                   <div className="flex items-center gap-1">
-                    <FileText className="h-3 w-3" />
+                    <FileText className="h-4 w-4" />
                     <span>{task.attachments.length} {task.attachments.length === 1 ? 'File' : 'Files'}</span>
                   </div>
                   {(task.links && task.links.length > 0) && (
@@ -322,7 +324,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
               {/* Links */}
               {task.links && task.links.length > 0 && (
                 <div className="flex items-center gap-1">
-                  <Link2 className="h-3 w-3" />
+                  <Link2 className="h-4 w-4" />
                   <span>{task.links.length} {task.links.length === 1 ? 'Link' : 'Links'}</span>
                 </div>
               )}
