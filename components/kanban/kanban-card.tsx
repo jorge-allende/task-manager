@@ -157,7 +157,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
     >
       <Card
         className={cn(
-          "group relative cursor-pointer hover:shadow-sm transition-all duration-200 border-muted/50 min-h-[240px] bg-background py-0 gap-0",
+          "group relative cursor-pointer hover:shadow-sm transition-all duration-200 border-0 h-[300px] bg-background py-0 gap-0",
           (isDragging || isSortableDragging) && "cursor-grabbing shadow-lg"
         )}
         {...attributes}
@@ -170,9 +170,9 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
           }
         }}
       >
-        <CardContent className="p-4 h-full flex flex-col overflow-hidden">
+        <CardContent className="p-4 h-full flex flex-col">
           {/* Tags - top section */}
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-2 mb-2 min-h-[36px]">
             {((task.tagDetails && task.tagDetails.length > 0) || (task.tags && task.tags.length > 0)) ? (
               <>
                 {(task.tagDetails || task.tags || []).slice(0, 2).map((tag, index) => {
@@ -185,7 +185,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
                     <Badge
                       key={tagName + index}
                       className={cn(
-                        "text-sm px-2.5 py-1.5 font-normal border-0",
+                        "text-sm px-2.5 py-1.5 font-normal",
                         !tagColor.style && tagColor.bg,
                         !tagColor.style && tagColor.text
                       )}
@@ -213,25 +213,25 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
           </h4>
 
           {/* Description preview */}
-          {task.description && (
-            <p className="text-base text-muted-foreground line-clamp-3 mb-3">
-              {task.description}
-            </p>
-          )}
-
-          {/* Spacer to push bottom content down */}
-          <div className="flex-1" />
+          <div className="min-h-[60px] mb-2">
+            {task.description && (
+              <p className="text-base text-muted-foreground line-clamp-3">
+                {task.description}
+              </p>
+            )}
+          </div>
 
           {/* Assignees section - full width row */}
-          {task.assignees && task.assignees.length > 0 && (
-            <div className="flex items-center justify-between mb-3 py-2">
+          <div className="flex items-center justify-between mb-2 min-h-[40px]">
+            {task.assignees && task.assignees.length > 0 ? (
+              <>
               <span className="text-sm font-medium text-muted-foreground">Assignees:</span>
               <div className="flex items-center gap-2">
                 <div className="flex -space-x-2">
                   {task.assignees.slice(0, 3).map((assignee) => (
                     <Avatar
                       key={assignee._id}
-                      className="h-8 w-8 border-2 border-background"
+                      className="h-8 w-8"
                     >
                       <AvatarImage
                         src={`https://api.dicebear.com/7.x/initials/svg?seed=${assignee.name}`}
@@ -254,11 +254,14 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
                   </Badge>
                 )}
               </div>
-            </div>
-          )}
+              </>
+            ) : (
+              <div /> 
+            )}
+          </div>
 
           {/* Date and priority row */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2 min-h-[28px]">
             {/* Due date */}
             {task.dueDate ? (
               <div
@@ -281,55 +284,38 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
               className={cn(
                 "text-sm font-medium px-3 py-1 rounded-full",
                 priorityConfig[task.priority].bgColor,
-                priorityConfig[task.priority].textColor,
-                "border-0"
+                priorityConfig[task.priority].textColor
               )}
             >
               {priorityConfig[task.priority].label}
             </Badge>
           </div>
 
+          {/* Separator line */}
+          <div className="w-full border-t border-gray-300 dark:border-gray-600 mt-auto mb-3" />
+          
           {/* Metadata section - always at bottom */}
-          {((task.commentCount !== undefined && task.commentCount > 0) || 
-            (task.attachments && task.attachments.length > 0) || 
-            (task.links && task.links.length > 0)) && (
-            <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground pt-4 border-t">
-              {/* Comments */}
-              {task.commentCount !== undefined && task.commentCount > 0 && (
-                <>
-                  <div className="flex items-center gap-1">
-                    <MessageSquare className="h-4 w-4" />
-                    <span>{task.commentCount} {task.commentCount === 1 ? 'Comment' : 'Comments'}</span>
-                  </div>
-                  {((task.attachments && task.attachments.length > 0) || 
-                    (task.links && task.links.length > 0)) && (
-                    <span className="text-muted-foreground/50">•</span>
-                  )}
-                </>
-              )}
-
-              {/* Attachments/Files */}
-              {task.attachments && task.attachments.length > 0 && (
-                <>
-                  <div className="flex items-center gap-1">
-                    <FileText className="h-4 w-4" />
-                    <span>{task.attachments.length} {task.attachments.length === 1 ? 'File' : 'Files'}</span>
-                  </div>
-                  {(task.links && task.links.length > 0) && (
-                    <span className="text-muted-foreground/50">•</span>
-                  )}
-                </>
-              )}
-
-              {/* Links */}
-              {task.links && task.links.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <Link2 className="h-4 w-4" />
-                  <span>{task.links.length} {task.links.length === 1 ? 'Link' : 'Links'}</span>
-                </div>
-              )}
+          <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+            {/* Comments */}
+            <div className="flex items-center gap-1">
+              <MessageSquare className="h-4 w-4" />
+              <span>{task.commentCount || 0} {(task.commentCount || 0) === 1 ? 'Comment' : 'Comments'}</span>
             </div>
-          )}
+            <span className="text-muted-foreground/50">•</span>
+
+            {/* Attachments/Files */}
+            <div className="flex items-center gap-1">
+              <FileText className="h-4 w-4" />
+              <span>{task.attachments?.length || 0} {(task.attachments?.length || 0) === 1 ? 'File' : 'Files'}</span>
+            </div>
+            <span className="text-muted-foreground/50">•</span>
+
+            {/* Links */}
+            <div className="flex items-center gap-1">
+              <Link2 className="h-4 w-4" />
+              <span>{task.links?.length || 0} {(task.links?.length || 0) === 1 ? 'Link' : 'Links'}</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

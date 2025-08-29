@@ -229,6 +229,11 @@ export const reorder = mutation({
     newPosition: v.number(),
   },
   handler: async (ctx, args) => {
+    // Validate input
+    if (args.newPosition < 0) {
+      throw new Error("Position cannot be negative")
+    }
+
     const column = await ctx.db.get(args.columnId)
     if (!column) {
       throw new Error("Column not found")
@@ -255,36 +260,91 @@ export const reorder = mutation({
       .withIndex("byWorkspace", (q) => q.eq("workspaceId", column.workspaceId))
       .collect()
 
+    if (columns.length === 0) {
+      throw new Error("No columns found in workspace")
+    }
+
     const sortedColumns = columns.sort((a, b) => a.position - b.position)
     const oldPosition = column.position
     const targetPosition = Math.max(0, Math.min(args.newPosition, columns.length - 1))
 
+    // Log the reordering attempt for debugging
+    console.log(`🔄 Backend: Reordering column ${args.columnId} from position ${oldPosition} to ${targetPosition}`)
+    console.log(`🔄 Backend: Input args:`, { columnId: args.columnId, newPosition: args.newPosition })
+    console.log(`🔄 Backend: All columns:`, sortedColumns.map(col => ({ id: col._id, name: col.name, position: col.position })))
+
     if (oldPosition === targetPosition) {
-      return // No change needed
+      return { success: true, message: "No change needed" }
     }
 
-    // Update positions
-    if (oldPosition < targetPosition) {
-      // Moving right
-      for (const col of sortedColumns) {
-        if (col.position > oldPosition && col.position <= targetPosition) {
-          await ctx.db.patch(col._id, { position: col.position - 1 })
+    try {
+      // Batch update positions to avoid race conditions
+      const updates: Array<{ id: Id<"columns">, position: number }> = []
+
+      // Calculate new positions for all affected columns
+      console.log(`🔄 Backend: Direction - ${oldPosition < targetPosition ? 'Moving Right' : 'Moving Left'}`)
+      
+      if (oldPosition < targetPosition) {
+        // Moving right - shift columns left
+        console.log(`🔄 Backend: Moving right, shifting columns ${oldPosition + 1}-${targetPosition} left by 1`)
+        for (const col of sortedColumns) {
+          if (col.position > oldPosition && col.position <= targetPosition) {
+            updates.push({ id: col._id, position: col.position - 1 })
+            console.log(`🔄 Backend: Shifting column ${col.name} from ${col.position} to ${col.position - 1}`)
+          }
+        }
+      } else {
+        // Moving left - shift columns right
+        console.log(`🔄 Backend: Moving left, shifting columns ${targetPosition}-${oldPosition - 1} right by 1`)
+        for (const col of sortedColumns) {
+          if (col.position >= targetPosition && col.position < oldPosition) {
+            updates.push({ id: col._id, position: col.position + 1 })
+            console.log(`🔄 Backend: Shifting column ${col.name} from ${col.position} to ${col.position + 1}`)
+          }
         }
       }
-    } else {
-      // Moving left
-      for (const col of sortedColumns) {
-        if (col.position >= targetPosition && col.position < oldPosition) {
-          await ctx.db.patch(col._id, { position: col.position + 1 })
+
+      // Add the moved column's new position
+      updates.push({ id: args.columnId, position: targetPosition })
+      console.log(`🔄 Backend: Moving target column to position ${targetPosition}`)
+      console.log(`🔄 Backend: All position updates:`, updates)
+
+      // Apply all updates
+      for (const update of updates) {
+        await ctx.db.patch(update.id, {
+          position: update.position,
+          updatedAt: new Date().toISOString(),
+        })
+        console.log(`🔄 Backend: Applied update - Column ${update.id} -> position ${update.position}`)
+      }
+
+      console.log(`Successfully reordered column ${args.columnId} to position ${targetPosition}`)
+      return { success: true, message: "Column reordered successfully" }
+
+    } catch (error) {
+      console.error(`❌ Backend: Failed to reorder column ${args.columnId}:`, error)
+      console.error(`❌ Backend: Error occurred during position updates`, {
+        columnId: args.columnId,
+        oldPosition,
+        targetPosition,
+        error: error instanceof Error ? error.message : "Unknown error",
+        totalUpdates: 0,
+        plannedUpdates: []
+      })
+      
+      // Provide more specific error messages based on the error type
+      if (error instanceof Error) {
+        if (error.message.includes('permission') || error.message.includes('access')) {
+          throw new Error("Permission denied: You don't have access to reorder columns in this workspace")
+        } else if (error.message.includes('constraint') || error.message.includes('unique')) {
+          throw new Error("Database constraint error: Invalid column position")
+        } else {
+          throw new Error(`Column reorder failed: ${error.message}`)
         }
+      } else {
+        throw new Error("Unknown error occurred while reordering column")
       }
     }
-
-    // Update the moved column
-    await ctx.db.patch(args.columnId, {
-      position: targetPosition,
-      updatedAt: new Date().toISOString(),
-    })
   },
 })
 
