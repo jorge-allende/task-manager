@@ -178,6 +178,51 @@ When installing shadcn/ui components:
 - **Due dates**: With calendar integration
 - **Archiving**: Soft delete for completed tasks
 
+#### Enhanced Task Creation Modal
+The task creation modal features a completely redesigned interface with modern UI and advanced functionality:
+
+**UI Design**:
+- Fixed modal dimensions (552px width x 715px height) for consistency across all tabs
+- Centered title and description in the header for better visual hierarchy
+- Clean, minimal design with reduced borders and visual clutter
+- Evenly spaced tab navigation with intuitive icons
+- Lighter input field borders for a softer, more modern appearance
+- Radio button group for priority selection replacing dropdown for better UX
+- Scrollable content area with fixed header and footer for optimal layout
+
+**Attachment Management System**:
+- Full file upload functionality accessible via the Attachments tab
+- Dual upload methods: click-to-upload interface or drag-and-drop capability
+- Comprehensive file type support including:
+  - Images (JPG, PNG, GIF, WebP)
+  - PDFs (Portable Document Format)
+  - Microsoft Office documents (Word, Excel, PowerPoint)
+  - Other common file formats
+- Advanced file preview system:
+  - Images and PDFs open directly in new browser tab for immediate viewing
+  - Other file types trigger secure download for local access
+- Visual file type indicators using emoji icons for quick identification
+- File size display with proper formatting (KB/MB/GB) for storage awareness
+- Individual file removal capability for precise attachment management
+- Scrollable file list interface for handling multiple attachments efficiently
+
+**Technical Implementation**:
+- React hooks-based state management for attachment handling
+- Comprehensive file utilities:
+  - `formatFileSize`: Converts bytes to human-readable format
+  - `handlePreviewFile`: Manages file preview functionality
+  - `handleDownloadFile`: Handles secure file downloads
+- Full TypeScript implementation with proper type definitions
+- Clean architectural separation between tab components
+- Integration with existing task creation workflow
+
+**Files Modified**:
+- `/components/kanban/task-create-modal.tsx`: Complete modal redesign and enhancement
+- `/app/dashboard/site-header.tsx`: UI consistency improvements (removed bottom border)
+- Various UI components updated for visual consistency
+
+IMPORTANT: These enhancements are currently available on the `feature/enhanced-task-create-modal` branch and represent significant improvements to the user experience for task creation workflows.
+
 ### Workspace System
 - **Multi-workspace** support per user
 - **Role-based access**: Owner, Admin, Member, Viewer
