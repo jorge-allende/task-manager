@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconPlus } from '@tabler/icons-react'
-import { TaskCreateDialog } from '@/components/TaskCreateDialog'
+import { TaskCreateModal } from '@/components/kanban/task-create-modal'
 
 export default function BoardPage() {
   const { currentWorkspace, isLoading, error } = useWorkspace()
@@ -86,9 +86,9 @@ export default function BoardPage() {
         <KanbanBoard workspaceId={currentWorkspace._id} />
       </div>
       {currentWorkspace && (
-        <TaskCreateDialog 
-          open={isCreateDialogOpen}
-          onOpenChange={setIsCreateDialogOpen}
+        <TaskCreateModal 
+          isOpen={isCreateDialogOpen}
+          onClose={() => setIsCreateDialogOpen(false)}
           workspaceId={currentWorkspace._id}
         />
       )}

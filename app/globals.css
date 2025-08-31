@@ -3,6 +3,61 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Subtle border customizations for cleaner UI */
+.border-0 {
+  border-width: 0;
+}
+
+/* Custom scrollbar styles for popover content */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(156 163 175);
+}
+
+.scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219);
+}
+
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Ensure popover content can scroll */
+[data-slot="popover-content"] {
+  overflow: visible !important;
+}
+
+[data-slot="popover-content"] * {
+  overflow: visible;
+}
+
+/* Force scrolling to work in popover contexts */
+.overflow-y-auto {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Override any potential pointer-events issues */
+.max-h-\[120px\] {
+  pointer-events: auto !important;
+}
+
 /* Line clamp utilities for text truncation */
 .line-clamp-1 {
   overflow: hidden;
@@ -177,6 +232,105 @@
 @layer base {
   body {
     @apply bg-background text-foreground;
+  }
+  
+  /* Custom cursor for drag and drop - no transitions */
+  .cursor-grab {
+    cursor: grab;
+  }
+  
+  .cursor-grabbing {
+    cursor: grabbing;
+  }
+  
+  /* GPU acceleration for performance */
+  .will-change-transform {
+    will-change: transform;
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+  
+  /* Custom scroll behavior */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Clean kanban transitions */
+@layer components {
+  /* Performance optimizations */
+  .gpu-accelerated {
+    transform: translateZ(0);
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+  }
+  
+  /* Clean transition variables */
+  :root {
+    --transition-fast: 150ms ease-out;
+    --transition-normal: 200ms ease-out;
+    --transition-slow: 300ms ease-out;
+  }
+  
+  /* Drag and drop enhancements */
+  .kanban-card-dragging {
+    opacity: 0 !important;
+    visibility: hidden;
+  }
+  
+  .kanban-card-overlay {
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+    position: relative;
+    z-index: 9999;
+  }
+  
+  .kanban-drag-overlay {
+    filter: drop-shadow(0 20px 30px -10px rgba(0, 0, 0, 0.2));
+    transform: translateZ(0) scale(1.03);
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+  
+  .kanban-drop-zone-active {
+    background: linear-gradient(135deg, 
+      rgb(from var(--color-primary) r g b / 0.05) 0%, 
+      rgb(from var(--color-primary) r g b / 0.1) 100%);
+    border-color: rgb(from var(--color-primary) r g b / 0.3);
+    transition: background var(--transition-normal), border-color var(--transition-normal);
+  }
+  
+  /* Column dragging styles */
+  .column-drag-handle {
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+  }
+  
+  .column-drag-handle:hover {
+    opacity: 1;
+  }
+  
+  .column-dragging {
+    opacity: 0.3;
+    transition: opacity 0.2s ease;
+  }
+  
+  .column-drag-overlay {
+    filter: drop-shadow(0 25px 35px -10px rgba(0, 0, 0, 0.3));
+    transform: translateZ(0) scale(1.02) rotate(2deg);
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+  
+  /* Removed dragPulse animation and cursor transitions for smoother dragging */
+  
+  /* Prevent text selection during drag */
+  .dragging-active {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
   }
 }
 
