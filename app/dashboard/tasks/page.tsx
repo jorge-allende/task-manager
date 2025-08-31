@@ -8,7 +8,7 @@ import { TasksTable } from "@/components/TasksTable";
 import { TaskFilters } from "@/components/TaskFilters";
 import { BulkActions } from "@/components/BulkActions";
 import { TaskStats } from "@/components/TaskStats";
-import { TaskCreateDialog } from "@/components/TaskCreateDialog";
+import { TaskCreateModal } from "@/components/kanban/task-create-modal";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -197,9 +197,9 @@ export default function TasksPage() {
       />
       
       {/* Create Task Dialog */}
-      <TaskCreateDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
+      <TaskCreateModal
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
         workspaceId={currentWorkspace._id}
       />
     </div>

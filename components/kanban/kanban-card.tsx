@@ -3,7 +3,6 @@
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Calendar, Clock, MessageSquare, Paperclip, User, GripVertical, Link2, FileText } from "lucide-react"
@@ -61,13 +60,6 @@ const priorityConfig = {
   urgent: { label: "Urgent", bgColor: "bg-red-100 dark:bg-red-900/30", textColor: "text-red-700 dark:text-red-300" },
 }
 
-const statusConfig = {
-  todo: { label: "Not Started", color: "bg-blue-500", textColor: "text-blue-500" },
-  in_progress: { label: "In Progress", color: "bg-amber-500", textColor: "text-amber-600 dark:text-amber-500" },
-  review: { label: "In Review", color: "bg-purple-500", textColor: "text-purple-600 dark:text-purple-500" },
-  done: { label: "Completed", color: "bg-green-500", textColor: "text-green-600 dark:text-green-500" },
-}
-
 // Tag color configuration - you can customize these colors based on your design system
 export const tagColorConfig: Record<string, { bg: string; text: string }> = {
   // Development related
@@ -123,9 +115,12 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
     isDragging: isSortableDragging,
   } = useSortable({ id: task._id })
 
+  // Determine if this card is currently being dragged
+  const isCurrentlyDragging = isDragging || isSortableDragging
+
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: isCurrentlyDragging ? undefined : transition,
   }
 
   const { isOverdue, isDueSoon } = useMemo(() => {
@@ -144,33 +139,32 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
     return { isOverdue: overdue, isDueSoon: dueSoon }
   }, [task.dueDate, task.status])
 
-  const statusInfo = statusConfig[task.status] || statusConfig.todo
-  
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "touch-manipulation select-none",
-        (isDragging || isSortableDragging) && "opacity-50"
+        "touch-manipulation select-none will-change-transform",
+        isCurrentlyDragging ? "opacity-0 cursor-grabbing" : "opacity-100 cursor-grab hover:cursor-grab"
       )}
     >
-      <Card
+      <div
         className={cn(
-          "group relative cursor-pointer hover:shadow-sm transition-all duration-200 border-0 h-[300px] bg-background py-0 gap-0",
-          (isDragging || isSortableDragging) && "cursor-grabbing shadow-lg"
+          "group relative border-0 h-[300px] bg-background rounded-lg overflow-hidden",
+          "shadow-sm",
+          !isCurrentlyDragging && "transition-shadow duration-200 hover:shadow-lg"
         )}
         {...attributes}
         {...listeners}
         onClick={(e) => {
           // Only trigger click if not dragging and not clicking on the drag handle
-          if (!isDragging && !isSortableDragging && onClick) {
+          if (!isCurrentlyDragging && onClick) {
             e.stopPropagation()
             onClick()
           }
         }}
       >
-        <CardContent className="p-4 h-full flex flex-col">
+        <div className="p-4 h-full flex flex-col">
           {/* Tags - top section */}
           <div className="flex flex-wrap gap-2 mb-2 min-h-[36px]">
             {((task.tagDetails && task.tagDetails.length > 0) || (task.tags && task.tags.length > 0)) ? (
@@ -292,7 +286,7 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
           </div>
 
           {/* Separator line */}
-          <div className="w-full border-t border-gray-300 dark:border-gray-600 mt-auto mb-3" />
+          <div className="w-full h-[1px] bg-gray-300 dark:bg-gray-600 mt-auto mb-3" />
           
           {/* Metadata section - always at bottom */}
           <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
@@ -316,8 +310,8 @@ export function KanbanCard({ task, isDragging, onClick }: KanbanCardProps) {
               <span>{task.links?.length || 0} {(task.links?.length || 0) === 1 ? 'Link' : 'Links'}</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
