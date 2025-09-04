@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
 import { format, startOfWeek, addDays, isSameMonth, isToday, isSameDay } from 'date-fns'
 import { DayCell } from './DayCell'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,7 @@ interface MonthViewProps {
   endDate: Date
 }
 
-export function MonthView({
+function MonthViewComponent({
   currentDate,
   tasksByDate,
   selectedDate,
@@ -47,21 +47,27 @@ export function MonthView({
   }, [])
 
   return (
-    <div className="bg-background rounded-lg border">
+    <div className="bg-card/50 backdrop-blur-sm rounded-xl shadow-sm overflow-hidden">
       {/* Weekday Headers */}
-      <div className="grid grid-cols-7 border-b">
-        {weekDays.map((day) => (
-          <div
-            key={day}
-            className="p-3 text-center text-sm font-medium text-muted-foreground"
-          >
-            {day}
-          </div>
-        ))}
+      <div className="grid grid-cols-7 bg-muted/30 backdrop-blur-sm">
+        {weekDays.map((day, index) => {
+          const isWeekend = index === 0 || index === 6
+          return (
+            <div
+              key={day}
+              className={cn(
+                "py-4 text-center text-sm font-semibold transition-colors",
+                isWeekend ? "text-muted-foreground" : "text-foreground"
+              )}
+            >
+              {day}
+            </div>
+          )
+        })}
       </div>
       
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-7 gap-px bg-border/5 p-px">
         {calendarDays.map((day) => {
           const dateKey = format(day, 'yyyy-MM-dd')
           const tasks = tasksByDate.get(dateKey) || []
@@ -87,3 +93,5 @@ export function MonthView({
     </div>
   )
 }
+
+export const MonthView = memo(MonthViewComponent)

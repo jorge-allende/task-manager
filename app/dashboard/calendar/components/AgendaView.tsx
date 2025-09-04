@@ -67,8 +67,14 @@ function TaskItem({ task }: TaskItemProps) {
         {...attributes}
         {...listeners}
         className={cn(
-          'group p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer',
-          isDragging && 'opacity-50'
+          'group p-4 rounded-lg bg-card/80 backdrop-blur-sm shadow-sm',
+          'hover:shadow-md hover:scale-[1.01] transition-all duration-200 cursor-pointer',
+          'border-l-4',
+          task.priority === 'urgent' && 'border-l-red-500 bg-red-500/5',
+          task.priority === 'high' && 'border-l-orange-500 bg-orange-500/5',
+          task.priority === 'medium' && 'border-l-yellow-500 bg-yellow-500/5',
+          task.priority === 'low' && 'border-l-blue-500 bg-blue-500/5',
+          isDragging && 'opacity-50 rotate-1 scale-105'
         )}
         onClick={() => setIsEditModalOpen(true)}
       >

@@ -7,9 +7,10 @@ import { Id } from '@/convex/_generated/dataModel'
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, isToday, isSameMonth, isSameDay } from 'date-fns'
 import { MonthView } from './MonthView'
 import { AgendaView } from './AgendaView'
+import { WeekView } from './WeekView'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { ChevronLeft, ChevronRight, Calendar, List } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, List, CalendarDays } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   DndContext,
@@ -24,12 +25,13 @@ import {
 } from '@dnd-kit/core'
 import { KanbanCard } from '@/components/kanban/kanban-card'
 import { TaskCreateModal } from '@/components/kanban/task-create-modal'
+import { CalendarFilters, FilterState } from './CalendarFilters'
 
 interface CalendarViewProps {
   workspaceId: Id<"workspaces">
 }
 
-type ViewMode = 'month' | 'agenda'
+type ViewMode = 'month' | 'week' | 'agenda'
 
 export function CalendarView({ workspaceId }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -38,9 +40,17 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createModalDate, setCreateModalDate] = useState<string | null>(null)
+  const [filters, setFilters] = useState<FilterState>({
+    search: '',
+    priorities: [],
+    statuses: [],
+    assigneeIds: [],
+    tags: [],
+    showCompleted: true,
+  })
 
   // Fetch all tasks for the workspace
-  const tasks = useQuery(api.tasks.listForBoard, { 
+  const tasks = useQuery(api.tasks.listForBoardLegacy, { 
     workspaceId, 
     includeArchived: false 
   })
@@ -72,19 +82,52 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
     }
   }, [currentDate])
 
-  // Group tasks by date
+  // Filter and group tasks by date
   const tasksByDate = useMemo(() => {
     if (!tasks) return new Map<string, any[]>()
     
     const map = new Map<string, any[]>()
     
-    // Flatten all tasks from different statuses
-    const allTasks = [
-      ...tasks.todo,
-      ...tasks.in_progress,
-      ...tasks.review,
-      ...tasks.done,
+    // Flatten all tasks from different statuses with defensive checks
+    let allTasks = [
+      ...(tasks.todo || []),
+      ...(tasks.in_progress || []),
+      ...(tasks.review || []),
+      ...(tasks.done || []),
     ]
+    
+    // Apply filters
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase()
+      allTasks = allTasks.filter(task => 
+        task.title?.toLowerCase().includes(searchLower) ||
+        task.description?.toLowerCase().includes(searchLower)
+      )
+    }
+    
+    if (filters.priorities.length > 0) {
+      allTasks = allTasks.filter(task => filters.priorities.includes(task.priority))
+    }
+    
+    if (filters.statuses.length > 0) {
+      allTasks = allTasks.filter(task => filters.statuses.includes(task.status))
+    }
+    
+    if (filters.assigneeIds.length > 0) {
+      allTasks = allTasks.filter(task => 
+        task.assignedTo?.some((userId: string) => filters.assigneeIds.includes(userId))
+      )
+    }
+    
+    if (filters.tags.length > 0) {
+      allTasks = allTasks.filter(task =>
+        task.tags?.some((tag: string) => filters.tags.includes(tag))
+      )
+    }
+    
+    if (!filters.showCompleted) {
+      allTasks = allTasks.filter(task => task.status !== 'done')
+    }
     
     // Group by due date
     allTasks.forEach(task => {
@@ -110,17 +153,17 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
     })
     
     return map
-  }, [tasks])
+  }, [tasks, filters])
 
   // Find active task for drag overlay
   const activeTask = useMemo(() => {
     if (!activeTaskId || !tasks) return null
     
     const allTasks = [
-      ...tasks.todo,
-      ...tasks.in_progress,
-      ...tasks.review,
-      ...tasks.done,
+      ...(tasks.todo || []),
+      ...(tasks.in_progress || []),
+      ...(tasks.review || []),
+      ...(tasks.done || []),
     ]
     
     return allTasks.find(task => task._id === activeTaskId) || null
@@ -190,10 +233,42 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
     setIsCreateModalOpen(true)
   }, [])
 
+  // Get unique tags for filters (assignees would need separate user fetching)
+  const { uniqueAssignees, uniqueTags } = useMemo(() => {
+    if (!tasks) return { uniqueAssignees: [], uniqueTags: [] }
+    
+    const allTasks = [
+      ...(tasks.todo || []),
+      ...(tasks.in_progress || []),
+      ...(tasks.review || []),
+      ...(tasks.done || []),
+    ]
+    
+    const tagsSet = new Set<string>()
+    
+    allTasks.forEach(task => {
+      task.tags?.forEach((tag: string) => {
+        tagsSet.add(tag)
+      })
+    })
+    
+    return {
+      uniqueAssignees: [], // Would need to fetch user details separately
+      uniqueTags: Array.from(tagsSet),
+    }
+  }, [tasks])
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-in fade-in duration-300">
+      {/* Filters */}
+      <CalendarFilters
+        onFiltersChange={setFilters}
+        assignees={uniqueAssignees}
+        tags={uniqueTags}
+      />
+      
       {/* Calendar Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between animate-in slide-in-from-top duration-300">
         <div className="flex items-center gap-4">
           <h3 className="text-2xl font-semibold">
             {format(currentDate, 'MMMM yyyy')}
@@ -234,6 +309,10 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
             <Calendar className="h-4 w-4 mr-2" />
             Month
           </ToggleGroupItem>
+          <ToggleGroupItem value="week" aria-label="Week view">
+            <CalendarDays className="h-4 w-4 mr-2" />
+            Week
+          </ToggleGroupItem>
           <ToggleGroupItem value="agenda" aria-label="Agenda view">
             <List className="h-4 w-4 mr-2" />
             Agenda
@@ -242,6 +321,7 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
       </div>
 
       {/* Calendar Content */}
+      <div className="animate-in slide-in-from-bottom duration-500">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -249,7 +329,7 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {viewMode === 'month' ? (
+        {viewMode === 'month' && (
           <MonthView
             currentDate={currentDate}
             tasksByDate={tasksByDate}
@@ -259,7 +339,17 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
             startDate={startDate}
             endDate={endDate}
           />
-        ) : (
+        )}
+        {viewMode === 'week' && (
+          <WeekView
+            currentDate={currentDate}
+            tasksByDate={tasksByDate}
+            selectedDate={selectedDate}
+            onDateClick={handleDateClick}
+            onCreateTask={handleCreateTaskForDate}
+          />
+        )}
+        {viewMode === 'agenda' && (
           <AgendaView
             currentDate={currentDate}
             tasksByDate={tasksByDate}
@@ -271,12 +361,15 @@ export function CalendarView({ workspaceId }: CalendarViewProps) {
         
         <DragOverlay>
           {activeTask ? (
-            <div className="opacity-90 rotate-3 scale-105">
-              <KanbanCard task={activeTask} isDragging />
+            <div className="opacity-90 rotate-2 scale-105 animate-pulse-subtle">
+              <div className="bg-background/95 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-primary/50">
+                <KanbanCard task={activeTask} isDragging />
+              </div>
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
+      </div>
 
       {/* Create Task Modal */}
       <TaskCreateModal
